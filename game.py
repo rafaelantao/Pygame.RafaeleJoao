@@ -158,7 +158,7 @@ class GameConfig:
 
 
 class BowGame:
-    def __init__(self, config: GameConfig) -> None:
+    def _init_(self, config: GameConfig) -> None:
         pygame.init()
         pygame.font.init()
         self.config = config
@@ -630,5 +630,5 @@ def main() -> None:
         pass
 
 
-if __name__ == "__main__":
-    main()
+if _name_ == "_main_":
+    main()

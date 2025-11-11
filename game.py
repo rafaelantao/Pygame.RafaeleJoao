@@ -202,6 +202,7 @@ class BowGame:
 
         if v_y <= 0.0:
             self.state = GameState.AIMING
+            self.last_message = "Cannot shoot backward"
             return
 
         start_y = max(self.config.near_plane, 1e-4)
@@ -212,7 +213,7 @@ class BowGame:
             origin=start_pos.copy(),
         )
         self.state = GameState.IN_FLIGHT
-        self.last_result = None
+        self.last_message = "Arrow in flight"
 
     def _update(self, dt: float) -> None:
         if self.state in (GameState.AIMING, GameState.CHARGING):
@@ -263,7 +264,6 @@ class BowGame:
             self._finalize_shot(hit=False)
 
     def _finalize_shot(self, hit: bool) -> None:
-        result = self._compute_shot_result(hit)
         message = self._compute_shot_result(hit)
         self.last_message = message
         self.state = GameState.RESOLVE
@@ -357,6 +357,31 @@ class BowGame:
         for i, text in enumerate(lines):
             surface = self.font.render(text, True, ui_color)
             self.screen.blit(surface, (16, 16 + i * 24))
+
+        self._draw_power_bar(power_ratio)
+        self._draw_instructions()
+
+    def _draw_power_bar(self, ratio: float) -> None:
+        bar_width = 280
+        bar_height = 16
+        x = 16
+        y = self.config.screen_height - bar_height - 32
+        pygame.draw.rect(self.screen, (80, 80, 80), (x, y, bar_width, bar_height), 2)
+        inner_width = int((bar_width - 4) * ratio)
+        if inner_width > 0:
+            pygame.draw.rect(
+                self.screen,
+                self.config.arrow_color,
+                (x + 2, y + 2, inner_width, bar_height - 4),
+            )
+
+    def _draw_instructions(self) -> None:
+        text = "A/D yaw  W/S pitch  SPACE hold+release  ESC quit"
+        surface = self.small_font.render(text, True, self.config.ui_color)
+        rect = surface.get_rect(
+            center=(self.config.screen_width // 2, self.config.screen_height - 40)
+        )
+        self.screen.blit(surface, rect)
 
 
 def main() -> None:

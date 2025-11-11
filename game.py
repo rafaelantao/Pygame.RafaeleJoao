@@ -2,11 +2,13 @@ import math
 import os
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import pygame
 from pygame.math import Vector3
 from dotenv import load_dotenv
+
+from menu import BowProfile, StartMenu, get_bow_profile, load_settings
 
 
 # Representa os estados principais do loop, fica mais fácil enxergar a progressão.
@@ -158,17 +160,31 @@ class GameConfig:
 
 
 class BowGame:
-    def _init_(self, config: GameConfig) -> None:
+    def __init__(
+        self,
+        config: GameConfig,
+        settings: Optional[Dict[str, Any]] = None,
+        screen: Optional[pygame.Surface] = None,
+    ) -> None:
         pygame.init()
         pygame.font.init()
         self.config = config
-        self.screen = pygame.display.set_mode(
+        self.screen = screen or pygame.display.set_mode(
             (config.screen_width, config.screen_height)
         )
         pygame.display.set_caption("Semi-3D Bow & Arrow")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("consolas", 20)
         self.small_font = pygame.font.SysFont("consolas", 16)
+        self.settings: Dict[str, Any] = {}
+        self.music_enabled = True
+        self.sfx_enabled = True
+        self.sfx_volume = 1.0
+        self.audio_available = False
+        self.bow_profile: BowProfile = get_bow_profile("base")
+        self._init_audio()
+        initial_settings = settings or load_settings()
+        self._apply_settings(initial_settings)
 
         self.cx = config.screen_width * 0.5
         self.cy = config.screen_height * 0.5
@@ -195,6 +211,34 @@ class BowGame:
         self.awaiting_reload = False
         self.hit_markers: List[Vector3] = []
 
+    def _init_audio(self) -> None:
+        if pygame.mixer.get_init():
+            self.audio_available = True
+            return
+        try:
+            pygame.mixer.init()
+            self.audio_available = True
+        except pygame.error:
+            self.audio_available = False
+
+    def _apply_settings(self, settings: Dict[str, Any]) -> None:
+        merged = {
+            "music_enabled": bool(settings.get("music_enabled", True)),
+            "sfx_enabled": bool(settings.get("sfx_enabled", True)),
+            "bow_type": str(settings.get("bow_type", "base")),
+        }
+        self.settings = merged
+        self.music_enabled = merged["music_enabled"]
+        self.sfx_enabled = merged["sfx_enabled"]
+        self.sfx_volume = 1.0 if self.sfx_enabled else 0.0
+        self.bow_profile = get_bow_profile(merged["bow_type"])
+        self._apply_audio_settings()
+
+    def _apply_audio_settings(self) -> None:
+        if not self.audio_available or not pygame.mixer.get_init():
+            return
+        pygame.mixer.music.set_volume(1.0 if self.music_enabled else 0.0)
+
     def run(self) -> None:
         # Loop principal tradicional do Pygame.
         while self.running:
@@ -211,7 +255,7 @@ class BowGame:
                 self.running = False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    self.running = False
+                    self._open_menu()
                 elif event.key == pygame.K_SPACE:
                     self._start_charging()
                 elif event.key in (pygame.K_1, pygame.K_2, pygame.K_3):
@@ -230,6 +274,21 @@ class BowGame:
             self.config.difficulty = chosen
             self.last_result = None
             self.hit_markers.clear()
+
+    def _open_menu(self) -> None:
+        menu = StartMenu(
+            self.config,
+            self.settings,
+            surface=self.screen,
+            start_label="Resume Game",
+        )
+        result = menu.run()
+        pygame.event.clear()
+        if getattr(menu, "quit_requested", False):
+            self.running = False
+            return
+        new_settings = result or load_settings()
+        self._apply_settings(new_settings)
 
     def _start_charging(self) -> None:
         # Impedimos disparos extras quando o jogador precisa recarregar.
@@ -253,7 +312,9 @@ class BowGame:
             return
 
         shaped_power = power_ratio ** self.config.power_exponent
-        launch_speed = self.config.max_arrow_speed * shaped_power
+        launch_speed = (
+            self.config.max_arrow_speed * shaped_power * self.bow_profile.fire_rate
+        )
         yaw_rad = math.radians(self.yaw_deg)
         pitch_rad = math.radians(self.pitch_deg)
         cos_pitch = math.cos(pitch_rad)
@@ -423,7 +484,9 @@ class BowGame:
         rings = max(2, self.config.target_ring_count)
         step = (max_score - min_score) / (rings - 1)
         score = max_score - (ring_index - 1) * step
-        return int(round(max(min_score, score)))
+        raw_score = max(min_score, score)
+        scaled = raw_score * self.bow_profile.damage
+        return int(round(scaled))
 
     def _update_quiver_after_shot(self, points: int) -> None:
         # Gerenciamos flechas, somamos pontos e forçamos o reload quando necessário.
@@ -555,6 +618,15 @@ class BowGame:
             f"Yaw: {self.yaw_deg:+.1f} deg",
             f"Pitch: {self.pitch_deg:+.1f} deg",
             f"Difficulty: {self.config.difficulty} ({self.config.target_distance():.1f} m)",
+            "Audio: Music {music}  SFX {sfx}".format(
+                music="ON" if self.music_enabled else "OFF",
+                sfx="ON" if self.sfx_enabled else "OFF",
+            ),
+            "Bow: {name}  DMG x{dmg:.1f}  SPD x{spd:.2f}".format(
+                name=self.bow_profile.label,
+                dmg=self.bow_profile.damage,
+                spd=self.bow_profile.fire_rate,
+            ),
             f"Quiver: {self.arrows_remaining}/{self.quiver_size}  Score: {self.quiver_score}",
         ]
 
@@ -611,7 +683,7 @@ class BowGame:
         # Mantemos o tutorial sempre visível para facilitar testes rápidos.
         extra = " | OUT OF ARROWS - PRESS R" if self.awaiting_reload else ""
         text = (
-            "A/D yaw  W/S pitch  SPACE hold+release to fire  1-3 difficulty  R reload  ESC quit"
+            "A/D yaw  W/S pitch  SPACE hold+release to fire  1-3 difficulty  R reload  ESC menu"
             + extra
         )
         surface = self.small_font.render(text, True, self.config.ui_color)
@@ -623,12 +695,29 @@ class BowGame:
 
 def main() -> None:
     config = GameConfig.load()
-    game = BowGame(config)
+    if not pygame.get_init():
+        pygame.init()
+        pygame.font.init()
+    screen = pygame.display.set_mode((config.screen_width, config.screen_height))
+    pygame.display.set_caption("Semi-3D Bow & Arrow - Menu")
+    initial_settings = load_settings()
+    menu = StartMenu(config, initial_settings, surface=screen, start_label="Start Game")
+    selected_settings = menu.run()
+    if getattr(menu, "quit_requested", False) or selected_settings is None:
+        pygame.quit()
+        return
+    pygame.display.set_caption("Semi-3D Bow & Arrow")
+    game = BowGame(config, selected_settings, screen=screen)
     try:
         game.run()
     except KeyboardInterrupt:
         pass
 
 
-if _name_ == "_main_":
-    main()
+<<<<<<< HEAD
+if __name__ == "__main__":
+    main()
+=======
+if __name__ == "__main__":
+    main()
+>>>>>>> 61e39f6 (game.py conectado com menu)

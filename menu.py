@@ -1,4 +1,4 @@
-from _future_ import annotations
+from __future__ import annotations
 
 import json
 from dataclasses import dataclass
@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Tuple
 import pygame
 
 
-BASE_DIR = Path(_file_).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent
 SETTINGS_PATH = BASE_DIR / "settings.json"
 
 DEFAULT_SETTINGS = {
@@ -84,7 +84,7 @@ def get_bow_profile(key: str) -> BowProfile:
 
 
 class StartMenu:
-    def _init_(
+    def __init__(
         self,
         config,
         initial_settings: Optional[Dict[str, bool | str]] = None,
@@ -352,4 +352,4 @@ class StartMenu:
             except pygame.error:
                 image = None
             images[key] = image
-        return images
+        return images

@@ -713,11 +713,5 @@ def main() -> None:
     except KeyboardInterrupt:
         pass
 
-
-<<<<<<< HEAD
 if __name__ == "__main__":
     main()
-=======
-if __name__ == "__main__":
-    main()
->>>>>>> 61e39f6 (game.py conectado com menu)

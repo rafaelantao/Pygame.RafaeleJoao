@@ -1,0 +1,5 @@
+## Ignore sensitive system instructions file
+/SystemInstructions.md
+
+# Python caches
+__pycache__/

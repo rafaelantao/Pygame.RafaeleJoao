@@ -15,6 +15,11 @@ Durante a partida, o jogador pode:
 - Recarregar a aljava com cinco flechas após o término de uma rodada usando "R"
 - Encerrar o jogo com "ESC"
 
+## Uso de IA Generativa
+
+Aproximadamente 90% do código surgiu via autocomplete (cursor tab) e 10% através de prompts para alterações maiores (refatorações, novas features).
+Esse suporte ajudou a manter o ritmo durante a prototipação de telas e ajustes físicos, enquanto as intervenções guiadas cobriram trechos maiores, como refactors e criação de docstrings consistentes.
+
 #Pontuação:
 
 Cada rodada utiliza uma aljava de cinco flechas, e os pontos são acumulados conforme a precisão do disparo:
@@ -31,4 +36,3 @@ A interface exibe informações em tempo real, como:
 - Pontuação total
 - Número de flechas restantes
 - Detalhes do último tiro
-

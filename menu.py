@@ -20,6 +20,8 @@ DEFAULT_SETTINGS = {
 
 @dataclass(frozen=True)
 class BowProfile:
+    """Define um perfil de arco com arte, descrição e multiplicador de força."""
+
     key: str
     label: str
     description: str
@@ -55,6 +57,11 @@ BOW_ORDER: List[str] = ["base", "intermediate", "advanced"]
 
 
 def load_settings() -> Dict[str, bool | str]:
+    """Carrega configurações persistidas ou retorna os valores padrão.
+
+    Retorna:
+        Dicionário contendo flags de áudio e tipo de arco.
+    """
     settings: Dict[str, bool | str] = DEFAULT_SETTINGS.copy()
     if not SETTINGS_PATH.exists():
         return settings
@@ -69,6 +76,14 @@ def load_settings() -> Dict[str, bool | str]:
 
 
 def save_settings(settings: Dict[str, bool | str]) -> None:
+    """Persiste configurações no arquivo JSON do projeto.
+
+    Parâmetros:
+        settings: Estrutura com os valores que devem ser gravados.
+
+    Retorna:
+        None.
+    """
     try:
         SETTINGS_PATH.write_text(json.dumps(settings, indent=2), encoding="utf-8")
     except OSError:
@@ -76,10 +91,20 @@ def save_settings(settings: Dict[str, bool | str]) -> None:
 
 
 def get_bow_profile(key: str) -> BowProfile:
+    """Obtém o perfil de arco registrado para o identificador informado.
+
+    Parâmetros:
+        key: Nome curto do arco (base, intermediate, advanced).
+
+    Retorna:
+        Instância de `BowProfile` correspondente.
+    """
     return BOW_PROFILES.get(key, BOW_PROFILES["base"])
 
 
 class StartMenu:
+    """Implementa o menu inicial usado para ajustes rápidos antes do jogo."""
+
     def __init__(
         self,
         config,
@@ -87,6 +112,17 @@ class StartMenu:
         surface: Optional[pygame.Surface] = None,
         start_label: str = "Iniciar Jogo",
     ) -> None:
+        """Configura fontes, estados e preferências exibidos no menu.
+
+        Parâmetros:
+            config: Configuração global compartilhada com o jogo.
+            initial_settings: Valores carregados previamente do disco.
+            surface: Superfície opcional reutilizada para evitar flicker.
+            start_label: Texto exibido no botão de iniciar/continuar.
+
+        Retorna:
+            None.
+        """
         if not pygame.get_init():
             pygame.init()
         if not pygame.font.get_init():
@@ -123,6 +159,11 @@ class StartMenu:
         self._apply_audio_preview()
 
     def run(self) -> Optional[Dict[str, bool | str]]:
+        """Loop principal do menu, tratando entradas e retornando as escolhas.
+
+        Retorna:
+            Cópia das configurações confirmadas ou None em caso de cancelamento.
+        """
         pygame.mouse.set_visible(True)
         self.running = True
         self.confirmed = False
@@ -146,6 +187,14 @@ class StartMenu:
         return self.settings.copy() if self.confirmed else None
 
     def _handle_key(self, event: pygame.event.Event) -> None:
+        """Trata teclas de navegação, alternância e confirmação.
+
+        Parâmetros:
+            event: Evento KEYDOWN recebido do pygame.
+
+        Retorna:
+            None.
+        """
         if event.key in (pygame.K_UP, pygame.K_w):
             self._move_selection(-1)
         elif event.key in (pygame.K_DOWN, pygame.K_s):
@@ -161,6 +210,14 @@ class StartMenu:
             self.confirmed = False
 
     def _handle_mouse_motion(self, pos: Tuple[int, int]) -> None:
+        """Atualiza o item selecionado ao mover o mouse sobre a lista.
+
+        Parâmetros:
+            pos: Coordenadas do cursor em pixels.
+
+        Retorna:
+            None.
+        """
         for idx, rect in self.option_rects:
             if rect.collidepoint(pos):
                 self.selected_index = idx
@@ -169,6 +226,14 @@ class StartMenu:
         self.hover_index = None
 
     def _handle_mouse_click(self, pos: Tuple[int, int]) -> None:
+        """Aciona o item correspondente ao clique esquerdo no menu.
+
+        Parâmetros:
+            pos: Coordenadas do clique.
+
+        Retorna:
+            None.
+        """
         for idx, rect in self.option_rects:
             if rect.collidepoint(pos):
                 self.selected_index = idx
@@ -176,9 +241,25 @@ class StartMenu:
                 return
 
     def _move_selection(self, delta: int) -> None:
+        """Avança ou retrocede o índice selecionado na lista.
+
+        Parâmetros:
+            delta: Incremento aplicado ao índice atual.
+
+        Retorna:
+            None.
+        """
         self.selected_index = (self.selected_index + delta) % len(self.menu_items)
 
     def _activate_current(self, direction: int = 0) -> None:
+        """Executa a ação associada ao item selecionado.
+
+        Parâmetros:
+            direction: Incremento usado para opções de escolha contínua.
+
+        Retorna:
+            None.
+        """
         item = self.menu_items[self.selected_index]
         key = item["key"]
         if key == "music":
@@ -197,6 +278,14 @@ class StartMenu:
             self.running = False
 
     def _cycle_bow(self, direction: int) -> None:
+        """Alterna o perfil de arco seguindo a ordem pré-definida.
+
+        Parâmetros:
+            direction: +1 ou -1 para navegar entre os perfis.
+
+        Retorna:
+            None.
+        """
         current = str(self.settings.get("bow_type", "base"))
         idx = BOW_ORDER.index(current) if current in BOW_ORDER else 0
         idx = (idx + direction) % len(BOW_ORDER)
@@ -204,6 +293,11 @@ class StartMenu:
         save_settings(self.settings)
 
     def _draw(self) -> None:
+        """Renderiza a composição completa do menu com opções e preview.
+
+        Retorna:
+            None.
+        """
         self.surface.fill((12, 16, 28))
         title = self.title_font.render(
             "Arco e Flecha de Rafael & João", True, (230, 230, 240)
@@ -260,6 +354,17 @@ class StartMenu:
     def _draw_bow_preview(
         self, x: int, y: int, width: int, height: int
     ) -> None:
+        """Desenha o painel lateral com imagem e estatísticas do arco escolhido.
+
+        Parâmetros:
+            x: Coordenada X da área do preview.
+            y: Coordenada Y da área do preview.
+            width: Largura útil do painel.
+            height: Altura disponível.
+
+        Retorna:
+            None.
+        """
         profile = get_bow_profile(str(self.settings.get("bow_type", "base")))
         pygame.draw.rect(
             self.surface,
@@ -299,6 +404,11 @@ class StartMenu:
         # O texto de descrição foi removido para manter o preview mais limpo.
 
     def _draw_instructions(self) -> None:
+        """Exibe lembrete de controles do menu na parte inferior da tela.
+
+        Retorna:
+            None.
+        """
         text = "Setas/WASD navegam • Enter/Espaço confirma • ESC retorna"
         surface = self.small_font.render(text, True, (200, 210, 230))
         rect = surface.get_rect(
@@ -307,6 +417,14 @@ class StartMenu:
         self.surface.blit(surface, rect)
 
     def _value_text(self, key: str) -> str:
+        """Produz a descrição textual do valor atual para cada item de menu.
+
+        Parâmetros:
+            key: Identificador do item (music, sfx, bow ou start).
+
+        Retorna:
+            Texto mostrado ao lado direito da opção.
+        """
         if key == "music":
             return "LIGADO" if self.settings["music_enabled"] else "DESLIGADO"
         if key == "sfx":
@@ -319,6 +437,15 @@ class StartMenu:
         return ""
 
     def _scale_surface(self, surface: pygame.Surface, target_size: Tuple[int, int]) -> pygame.Surface:
+        """Redimensiona a imagem mantendo proporção para caber no preview.
+
+        Parâmetros:
+            surface: Imagem original.
+            target_size: Tamanho máximo permitido (largura, altura).
+
+        Retorna:
+            Superfície escalonada ou a própria imagem se já couber.
+        """
         max_width, max_height = target_size
         width, height = surface.get_size()
         scale = min(max_width / max(1, width), max_height / max(1, height), 1.0)
@@ -326,6 +453,11 @@ class StartMenu:
         return pygame.transform.smoothscale(surface, new_size)
 
     def _ensure_mixer(self) -> bool:
+        """Garante que o mixer esteja inicializado antes de tocar sons.
+
+        Retorna:
+            True se o mixer pôde ser usado, caso contrário False.
+        """
         if pygame.mixer.get_init():
             return True
         try:
@@ -335,12 +467,22 @@ class StartMenu:
             return False
 
     def _apply_audio_preview(self) -> None:
+        """Atualiza o volume da música do menu para refletir o toggle atual.
+
+        Retorna:
+            None.
+        """
         if not self.audio_available or not pygame.mixer.get_init():
             return
         music_volume = 1.0 if self.settings["music_enabled"] else 0.0
         pygame.mixer.music.set_volume(music_volume)
 
     def _load_bow_images(self) -> Dict[str, Optional[pygame.Surface]]:
+        """Pré-carrega as imagens dos arcos usados no preview lateral.
+
+        Retorna:
+            Dicionário mapeando a chave do arco para a superfície carregada.
+        """
         images: Dict[str, Optional[pygame.Surface]] = {}
         for key, profile in BOW_PROFILES.items():
             path = BASE_DIR / profile.image_file

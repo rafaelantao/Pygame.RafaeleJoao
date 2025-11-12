@@ -24,6 +24,8 @@ SFX_FILE = (
 
 # Representa os estados principais do loop, fica mais fácil enxergar a progressão.
 class GameState(Enum):
+    """Define o conjunto de estados possíveis do loop principal."""
+
     AIMING = auto()
     CHARGING = auto()
     IN_FLIGHT = auto()
@@ -33,6 +35,8 @@ class GameState(Enum):
 # Estrutura simples para acompanhar posição/velocidade da flecha.
 @dataclass
 class Arrow:
+    """Mantém o estado completo de uma flecha em voo."""
+
     position: Vector3
     velocity: Vector3
     origin: Vector3
@@ -43,6 +47,8 @@ class Arrow:
 # Guardamos informações de cada disparo para a UI e pontuação.
 @dataclass
 class ShotResult:
+    """Agrega as informações de pontuação e impacto de um disparo."""
+
     hit: bool
     ring_index: Optional[int]
     radial_distance: float
@@ -54,6 +60,17 @@ class ShotResult:
 
 
 def _require_env(key: str) -> str:
+    """Recupera uma variável obrigatória do ambiente carregado via .env.
+
+    Parâmetros:
+        key: Nome da variável que deve estar definida.
+
+    Retorna:
+        Valor cru lido do ambiente.
+
+    Lança:
+        RuntimeError: Se a variável não estiver presente.
+    """
     value = os.getenv(key)
     if value is None:
         raise RuntimeError(f"Missing required .env key: {key}")
@@ -61,14 +78,38 @@ def _require_env(key: str) -> str:
 
 
 def _parse_float(key: str) -> float:
+    """Converte a variável informada para float usando `_require_env`.
+
+    Parâmetros:
+        key: Nome da variável de ambiente.
+
+    Retorna:
+        Valor convertido em ponto flutuante.
+    """
     return float(_require_env(key))
 
 
 def _parse_int(key: str) -> int:
+    """Converte a variável informada para inteiro usando `_require_env`.
+
+    Parâmetros:
+        key: Nome da variável de ambiente.
+
+    Retorna:
+        Valor convertido em inteiro.
+    """
     return int(_require_env(key))
 
 
 def _parse_color(value: str) -> Tuple[int, int, int]:
+    """Interpreta strings no formato 'R,G,B' como tuplas de inteiros.
+
+    Parâmetros:
+        value: Sequência textual com componentes separados por vírgula.
+
+    Retorna:
+        Tupla (R, G, B) com valores de 0 a 255.
+    """
     parts = [int(part.strip()) for part in value.split(",")]
     if len(parts) != 3:
         raise ValueError(f"Color must have 3 components, got '{value}'")
@@ -76,6 +117,14 @@ def _parse_color(value: str) -> Tuple[int, int, int]:
 
 
 def _parse_color_list(value: str) -> List[Tuple[int, int, int]]:
+    """Converte uma lista separada por ';' em várias cores RGB.
+
+    Parâmetros:
+        value: Texto contendo várias cores `R,G,B` separadas por ';'.
+
+    Retorna:
+        Lista de tuplas RGB.
+    """
     entries = [entry.strip() for entry in value.split(";") if entry.strip()]
     return [_parse_color(entry) for entry in entries]
 
@@ -83,6 +132,8 @@ def _parse_color_list(value: str) -> List[Tuple[int, int, int]]:
 # Centralizamos tudo que vem do .env para facilitar ajustes sem mexer no código.
 @dataclass
 class GameConfig:
+    """Carrega e expõe todos os parâmetros ajustáveis do jogo."""
+
     screen_width: int
     screen_height: int
     fps: int
@@ -125,6 +176,11 @@ class GameConfig:
 
     @classmethod
     def load(cls) -> "GameConfig":
+        """Constrói uma configuração a partir das variáveis de ambiente.
+
+        Retorna:
+            Instância preenchida de `GameConfig`.
+        """
         load_dotenv()
         difficulty = _require_env("DIFFICULTY").strip().upper()
         distance_map = {
@@ -177,16 +233,33 @@ class GameConfig:
         )
 
     def target_distance(self) -> float:
+        """Retorna a distância do alvo conforme a dificuldade atual.
+
+        Retorna:
+            Distância em metros usada para o alvo.
+        """
         return self.distance_map[self.difficulty]
 
 
 class BowGame:
+    """Gerencia regras, entrada e renderização do minigame de arco e flecha."""
+
     def __init__(
         self,
         config: GameConfig,
         settings: Optional[Dict[str, Any]] = None,
         screen: Optional[pygame.Surface] = None,
     ) -> None:
+        """Inicializa o Pygame, aplica configurações e prepara o loop principal.
+
+        Parâmetros:
+            config: Configuração carregada do .env.
+            settings: Preferências persistidas do menu (áudio, arco, etc.).
+            screen: Superfície opcional compartilhada com o menu.
+
+        Retorna:
+            None.
+        """
         pygame.init()
         pygame.font.init()
         self.config = config
@@ -235,6 +308,11 @@ class BowGame:
         self.hit_markers: List[Vector3] = []
 
     def _init_audio(self) -> None:
+        """Configura o mixer e carrega os ativos de áudio, se disponíveis.
+
+        Retorna:
+            None.
+        """
         if pygame.mixer.get_init():
             self.audio_available = True
             self._load_audio_assets()
@@ -248,6 +326,11 @@ class BowGame:
         self._load_audio_assets()
 
     def _load_audio_assets(self) -> None:
+        """Carrega música e efeitos sonoros respeitando a disponibilidade.
+
+        Retorna:
+            None.
+        """
         if not self.audio_available:
             return
         self.music_loaded = False
@@ -267,6 +350,14 @@ class BowGame:
             self.bow_sfx = None
 
     def _apply_settings(self, settings: Dict[str, Any]) -> None:
+        """Mescla preferências vindas do menu e aplica efeitos imediatos.
+
+        Parâmetros:
+            settings: Dicionário com flags de áudio e tipo de arco.
+
+        Retorna:
+            None.
+        """
         merged = {
             "music_enabled": bool(settings.get("music_enabled", True)),
             "sfx_enabled": bool(settings.get("sfx_enabled", True)),
@@ -280,6 +371,11 @@ class BowGame:
         self._apply_audio_settings()
 
     def _apply_audio_settings(self) -> None:
+        """Atualiza volumes e estado de reprodução conforme as preferências.
+
+        Retorna:
+            None.
+        """
         if not self.audio_available or not pygame.mixer.get_init():
             return
         if self.music_enabled and self.music_loaded:
@@ -292,12 +388,22 @@ class BowGame:
             self.bow_sfx.set_volume(self.sfx_volume)
 
     def _play_bow_sfx(self) -> None:
+        """Executa o efeito sonoro do disparo respeitando as opções de áudio.
+
+        Retorna:
+            None.
+        """
         if not self.audio_available or not self.sfx_enabled:
             return
         if self.bow_sfx:
             self.bow_sfx.play()
 
     def run(self) -> None:
+        """Executa o loop principal até o jogador encerrar o jogo.
+
+        Retorna:
+            None. Sai quando `self.running` se torna falso.
+        """
         # Loop principal tradicional do Pygame.
         while self.running:
             dt = self.clock.tick(self.config.fps) / 1000.0
@@ -307,6 +413,11 @@ class BowGame:
         pygame.quit()
 
     def _handle_events(self) -> None:
+        """Processa eventos de teclado/janela e encaminha para handlers.
+
+        Retorna:
+            None.
+        """
         # Processamos apenas o essencial para manter a responsividade.
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -324,6 +435,14 @@ class BowGame:
                 self._release_shot()
 
     def _handle_difficulty_key(self, key: int) -> None:
+        """Troca a dificuldade atual conforme o atalho recebido.
+
+        Parâmetros:
+            key: Código da tecla pressionada (1, 2 ou 3).
+
+        Retorna:
+            None.
+        """
         if self.state == GameState.IN_FLIGHT:
             return
         mapping = {pygame.K_1: "EASY", pygame.K_2: "MEDIUM", pygame.K_3: "HARD"}
@@ -334,6 +453,11 @@ class BowGame:
             self.hit_markers.clear()
 
     def _open_menu(self) -> None:
+        """Abre o menu de configurações e reaplica as escolhas do jogador.
+
+        Retorna:
+            None.
+        """
         menu = StartMenu(
             self.config,
             self.settings,
@@ -349,6 +473,11 @@ class BowGame:
         self._apply_settings(new_settings)
 
     def _start_charging(self) -> None:
+        """Inicia o carregamento do disparo caso haja flechas disponíveis.
+
+        Retorna:
+            None.
+        """
         # Impedimos disparos extras quando o jogador precisa recarregar.
         if self.awaiting_reload:
             self._queue_warning("Pressione R para recarregar a aljava.")
@@ -361,6 +490,11 @@ class BowGame:
             self.draw_time = 0.0
 
     def _release_shot(self) -> None:
+        """Converte o tempo de carga atual em velocidade e lança a flecha.
+
+        Retorna:
+            None.
+        """
         # Converte o tempo de carregamento em força inicial.
         if self.state != GameState.CHARGING:
             return
@@ -398,11 +532,27 @@ class BowGame:
         self._play_bow_sfx()
 
     def _queue_warning(self, text: str) -> None:
+        """Armazena um aviso temporário para ser exibido no HUD.
+
+        Parâmetros:
+            text: Mensagem curta a ser mostrada.
+
+        Retorna:
+            None.
+        """
         # Avisos curtos ajudam o jogador sem abrir diálogos.
         self.warning_text = text
         self.warning_timer = 1.5
 
     def _update(self, dt: float) -> None:
+        """Atualiza estado físico, timers e transições de estado.
+
+        Parâmetros:
+            dt: Intervalo de tempo decorrido em segundos.
+
+        Retorna:
+            None.
+        """
         if not self.running:
             return
 
@@ -427,6 +577,15 @@ class BowGame:
                 self.warning_text = None
 
     def _update_aim(self, keys, dt: float) -> None:
+        """Aplica entradas WASD à orientação da mira.
+
+        Parâmetros:
+            keys: Snapshot retornado por `pygame.key.get_pressed()`.
+            dt: Delta para suavizar a movimentação.
+
+        Retorna:
+            None.
+        """
         # Sensibilidade reduzida deixa a mira mais estável em gamepads e teclado.
         yaw_speed = self.config.aim_yaw_speed_deg_s
         pitch_speed = self.config.aim_pitch_speed_deg_s
@@ -446,6 +605,14 @@ class BowGame:
         )
 
     def _update_arrow(self, dt: float) -> None:
+        """Integra a trajetória da flecha e detecta impactos/timeout.
+
+        Parâmetros:
+            dt: Delta de tempo aplicado ao movimento.
+
+        Retorna:
+            None.
+        """
         # Integração explícita simples é suficiente para este minigame.
         assert self.arrow is not None
         arrow = self.arrow
@@ -466,6 +633,15 @@ class BowGame:
             self._finalize_shot(hit=True, reason=None)
 
     def _finalize_shot(self, hit: bool, reason: Optional[str]) -> None:
+        """Calcula o resultado do disparo e prepara o estado de resolução.
+
+        Parâmetros:
+            hit: Indica se a flecha cruzou o plano do alvo.
+            reason: Mensagem opcional para justificar erros.
+
+        Retorna:
+            None.
+        """
         # Ao terminar o voo, calculamos pontuação e animamos o estado de resolução.
         result = self._compute_shot_result(hit, reason)
         self.last_result = result
@@ -483,6 +659,15 @@ class BowGame:
         self._update_quiver_after_shot(result.points)
 
     def _compute_shot_result(self, hit: bool, reason: Optional[str]) -> ShotResult:
+        """Determina posição do impacto e pontuação correspondente.
+
+        Parâmetros:
+            hit: Se a flecha alcançou o plano do alvo.
+            reason: Explicação para falhas (usada na UI).
+
+        Retorna:
+            Instância `ShotResult` preenchida.
+        """
         # Reaproveitamos o lançamento inicial para resolver interseção com o plano do alvo.
         if not self.arrow:
             # Should not occur, but keep values sane.
@@ -527,6 +712,14 @@ class BowGame:
         )
 
     def _ring_index(self, radial_distance: float) -> Optional[int]:
+        """Converte uma distância radial no índice do anel atingido.
+
+        Parâmetros:
+            radial_distance: Distância em metros ao centro do alvo.
+
+        Retorna:
+            Índice 1..N ou None se estiver fora do alvo.
+        """
         step = self.config.target_outer_radius / self.config.target_ring_count
         for idx in range(1, self.config.target_ring_count + 1):
             if radial_distance <= step * idx + 1e-6:
@@ -534,6 +727,14 @@ class BowGame:
         return None
 
     def _points_for_ring(self, ring_index: Optional[int]) -> int:
+        """Calcula a pontuação proporcional ao anel informado.
+
+        Parâmetros:
+            ring_index: Índice retornado por `_ring_index`.
+
+        Retorna:
+            Pontos inteiros creditados ao jogador.
+        """
         # Distribuímos as pontuações de forma linear entre 10 e 100 pontos.
         if ring_index is None:
             return 0
@@ -546,6 +747,14 @@ class BowGame:
         return int(round(raw_score))
 
     def _update_quiver_after_shot(self, points: int) -> None:
+        """Atualiza flechas restantes, pontuação acumulada e avisos.
+
+        Parâmetros:
+            points: Pontos obtidos no disparo finalizado.
+
+        Retorna:
+            None.
+        """
         # Gerenciamos flechas, somamos pontos e forçamos o reload quando necessário.
         if self.arrows_remaining > 0:
             self.arrows_remaining -= 1
@@ -555,6 +764,11 @@ class BowGame:
             self._queue_warning("Sem flechas. Pressione R para recarregar.")
 
     def _reload_quiver(self) -> None:
+        """Recarrega a aljava e limpa marcadores após o fim da rodada.
+
+        Retorna:
+            None.
+        """
         # Reset da rodada: limpa marcadores, recarrega flechas e remove avisos.
         if not self.awaiting_reload and self.arrows_remaining == self.quiver_size:
             return
@@ -568,6 +782,11 @@ class BowGame:
         self.hit_markers.clear()
 
     def _render(self) -> None:
+        """Desenha todas as camadas do cenário e HUD em ordem fixa.
+
+        Retorna:
+            None.
+        """
         # Desenhamos o mundo numa ordem fixa para manter a sensação semi-3D.
         self.screen.fill(self.config.bg_color)
         self._draw_ground()
@@ -580,6 +799,11 @@ class BowGame:
         pygame.display.flip()
 
     def _draw_ground(self) -> None:
+        """Renderiza o retângulo do chão para reforçar a perspectiva.
+
+        Retorna:
+            None.
+        """
         # Plano XY no chão para dar noção de perspectiva.
         y_near = max(self.config.near_plane + 1e-3, 1e-3)
         y_far = min(self.config.far_plane, self.config.target_distance())
@@ -601,6 +825,11 @@ class BowGame:
         pygame.draw.polygon(self.screen, self.config.ground_color, projected)
 
     def _draw_wood_wall(self) -> None:
+        """Cria uma parede de madeira atrás do alvo como pano de fundo.
+
+        Retorna:
+            None.
+        """
         # Parede posicionada no mesmo plano do alvo para servir de cenário.
         distance = self.config.target_distance()
         if distance <= self.config.near_plane or distance >= self.config.far_plane:
@@ -624,6 +853,11 @@ class BowGame:
         pygame.draw.polygon(self.screen, self.config.wood_wall_color, projected)
 
     def _draw_target(self) -> None:
+        """Desenha os anéis do alvo e marcadores de impacto.
+
+        Retorna:
+            None.
+        """
         # Desenhamos círculos com escala em perspectiva (1 / distância).
         target_y = self.config.target_distance()
         center_world = Vector3(
@@ -649,6 +883,11 @@ class BowGame:
                 self._draw_hit_marker(marker_screen)
 
     def _draw_aim_circle(self) -> None:
+        """Projeta um círculo auxiliar indicando a mira sem gravidade.
+
+        Retorna:
+            None.
+        """
         # O círculo representa a linha reta entre a mira atual e o plano do alvo.
         world_point = self._aim_indicator_world_point()
         if not world_point:
@@ -666,6 +905,14 @@ class BowGame:
         )
 
     def _draw_arrow(self, arrow: Arrow) -> None:
+        """Desenha a flecha como círculo escalonado pela profundidade.
+
+        Parâmetros:
+            arrow: Instância com o estado atual do projétil.
+
+        Retorna:
+            None.
+        """
         # A flecha é um pequeno círculo cujo tamanho diminui com a distância.
         projected = self._project(arrow.position)
         if not projected:
@@ -674,6 +921,11 @@ class BowGame:
         pygame.draw.circle(self.screen, self.config.arrow_color, projected, depth_scale)
 
     def _aim_indicator_world_point(self) -> Optional[Vector3]:
+        """Calcula o ponto no alvo que seria atingido ignorando gravidade.
+
+        Retorna:
+            Vetor 3D com a posição estimada ou None se não houver interseção.
+        """
         # Ignoramos gravidade aqui para dar uma dica “idealizada” ao jogador.
         direction = self._aim_direction_vector()
         if direction.y <= 1e-5:
@@ -689,6 +941,11 @@ class BowGame:
         return origin + direction * t
 
     def _aim_direction_vector(self) -> Vector3:
+        """Retorna o vetor unitário correspondente aos ângulos atuais.
+
+        Retorna:
+            Vetor normalizado apontando para a direção da mira.
+        """
         # Converte ângulos em um vetor unitário no espaço 3D.
         yaw_rad = math.radians(self.yaw_deg)
         pitch_rad = math.radians(self.pitch_deg)
@@ -700,13 +957,31 @@ class BowGame:
         )
 
     def _effective_max_speed(self) -> float:
+        """Calcula a velocidade máxima ajustada pela força do arco.
+
+        Retorna:
+            Velocidade máxima em m/s considerando o perfil do arco.
+        """
         return self.config.max_arrow_speed * self.bow_profile.strength
 
     def _difficulty_label(self) -> str:
+        """Converte o código de dificuldade em um rótulo amigável.
+
+        Retorna:
+            String pronta para exibição no HUD.
+        """
         mapping = {"EASY": "Fácil", "MEDIUM": "Médio", "HARD": "Difícil"}
         return mapping.get(self.config.difficulty, self.config.difficulty.title())
 
     def _project(self, point: Vector3) -> Optional[Tuple[int, int]]:
+        """Converte um ponto 3D em coordenadas de tela via projeção pinhole.
+
+        Parâmetros:
+            point: Coordenada mundial a ser projetada.
+
+        Retorna:
+            Tupla (x, y) em pixels ou None se estiver fora do frustum.
+        """
         # Projeção pinhole simples alinhada ao eixo Y.
         if point.y <= self.config.near_plane or point.y >= self.config.far_plane:
             return None
@@ -715,6 +990,14 @@ class BowGame:
         return int(sx), int(sy)
 
     def _draw_hit_marker(self, position: Tuple[int, int]) -> None:
+        """Desenha um X estilizado no local onde uma flecha atingiu o alvo.
+
+        Parâmetros:
+            position: Coordenadas em pixels do impacto.
+
+        Retorna:
+            None.
+        """
         size = 8
         color = (220, 40, 40)
         x, y = position
@@ -722,6 +1005,11 @@ class BowGame:
         pygame.draw.line(self.screen, color, (x - size, y + size), (x + size, y - size), 2)
 
     def _draw_ui(self) -> None:
+        """Atualiza o HUD textual, barras e avisos contextuais.
+
+        Retorna:
+            None.
+        """
         # HUD textual com foco em ângulos, potência e placar da aljava.
         ui_color = self.config.ui_color
         music_state = "LIGADO" if self.music_enabled else "DESLIGADO"
@@ -771,6 +1059,11 @@ class BowGame:
             self.screen.blit(warning_surface, rect)
 
     def _draw_power_bar(self) -> None:
+        """Mostra a barra de potência acumulada durante o carregamento.
+
+        Retorna:
+            None.
+        """
         bar_width = 300
         bar_height = 18
         x = 16
@@ -789,6 +1082,11 @@ class BowGame:
             )
 
     def _draw_instructions(self) -> None:
+        """Renderiza o lembrete de controles e estado da aljava.
+
+        Retorna:
+            None.
+        """
         # Mantemos o tutorial sempre visível para facilitar testes rápidos.
         extra = " | SEM FLECHAS - PRESSIONE R" if self.awaiting_reload else ""
         text = (
@@ -803,6 +1101,11 @@ class BowGame:
 
 
 def main() -> None:
+    """Entrada principal que inicia o menu e, em seguida, o jogo.
+
+    Retorna:
+        None.
+    """
     config = GameConfig.load()
     if not pygame.get_init():
         pygame.init()

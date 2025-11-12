@@ -24,34 +24,30 @@ class BowProfile:
     label: str
     description: str
     image_file: str
-    damage: float
-    fire_rate: float
+    strength: float
 
 
 BOW_PROFILES: Dict[str, BowProfile] = {
     "base": BowProfile(
         key="base",
-        label="Base",
-        description="Reliable starter bow with balanced stats.",
-        image_file="Purple Bow and Arrow.png",
-        damage=1.0,
-        fire_rate=1.0,
+        label="Clássico",
+        description="Arco confiável para iniciantes equilibrados.",
+        image_file="Bow-Arrow-PNG-Photos.png",
+        strength=1.0,
     ),
     "intermediate": BowProfile(
         key="intermediate",
-        label="Intermediate",
-        description="Improved limbs for extra punch and speed.",
-        image_file="Purple Bow and Arrow PNG.png",
-        damage=1.3,
-        fire_rate=1.15,
+        label="Intermediário",
+        description="Lâminas reforçadas que aumentam o impulso.",
+        image_file="Purple Bow and Arrow.png",
+        strength=1.15,
     ),
     "advanced": BowProfile(
         key="advanced",
-        label="Advanced",
-        description="Forged with fire rune cores. Fastest draw.",
+        label="Avançado",
+        description="Forjado com runas de fogo, máxima velocidade.",
         image_file="Red Fire Bow and Arrow.png",
-        damage=1.6,
-        fire_rate=1.3,
+        strength=1.3,
     ),
 }
 
@@ -89,7 +85,7 @@ class StartMenu:
         config,
         initial_settings: Optional[Dict[str, bool | str]] = None,
         surface: Optional[pygame.Surface] = None,
-        start_label: str = "Start Game",
+        start_label: str = "Iniciar Jogo",
     ) -> None:
         if not pygame.get_init():
             pygame.init()
@@ -111,9 +107,9 @@ class StartMenu:
                     self.settings[key] = value
 
         self.menu_items = [
-            {"key": "music", "label": "Music", "type": "toggle"},
-            {"key": "sfx", "label": "Sound Effects", "type": "toggle"},
-            {"key": "bow", "label": "Bow Type", "type": "choice"},
+            {"key": "music", "label": "Música", "type": "toggle"},
+            {"key": "sfx", "label": "Efeitos Sonoros", "type": "toggle"},
+            {"key": "bow", "label": "Tipo de Arco", "type": "choice"},
             {"key": "start", "label": start_label, "type": "action"},
         ]
         self.selected_index = 0
@@ -209,7 +205,9 @@ class StartMenu:
 
     def _draw(self) -> None:
         self.surface.fill((12, 16, 28))
-        title = self.title_font.render("Rafaele & Joao Archery", True, (230, 230, 240))
+        title = self.title_font.render(
+            "Arco e Flecha de Rafael & João", True, (230, 230, 240)
+        )
         title_rect = title.get_rect(center=(self.config.screen_width // 2, 80))
         self.surface.blit(title, title_rect)
 
@@ -245,7 +243,11 @@ class StartMenu:
             self.surface.blit(value_surface, value_rect)
 
             if is_selected:
-                hint = "Use ← → to toggle" if item["key"] != "start" else "Press Enter to continue"
+                hint = (
+                    "Use ← → para alternar"
+                    if item["key"] != "start"
+                    else "Pressione Enter para continuar"
+                )
                 hint_surface = self.small_font.render(hint, True, (200, 220, 255))
                 hint_rect = hint_surface.get_rect(midleft=(rect.left + 24, rect.bottom - 14))
                 self.surface.blit(hint_surface, hint_rect)
@@ -273,10 +275,10 @@ class StartMenu:
             border_radius=16,
         )
 
-        title = self.option_font.render(f"{profile.label} Bow", True, (250, 250, 255))
+        title = self.option_font.render(f"Arco {profile.label}", True, (250, 250, 255))
         self.surface.blit(title, (x + 16, y + 16))
 
-        stats_text = f"Damage x{profile.damage:.1f} | Fire Rate x{profile.fire_rate:.2f}"
+        stats_text = f"Força do Arco x{profile.strength:.2f}"
         stats_surface = self.small_font.render(stats_text, True, (200, 210, 240))
         self.surface.blit(stats_surface, (x + 16, y + 60))
 
@@ -290,16 +292,14 @@ class StartMenu:
             placeholder_rect = pygame.Rect(0, 0, image_area.width, image_area.height)
             placeholder_rect.center = image_area.center
             pygame.draw.rect(self.surface, (80, 80, 120), placeholder_rect, border_radius=12)
-            msg = self.small_font.render("Image missing", True, (240, 240, 255))
+            msg = self.small_font.render("Imagem indisponível", True, (240, 240, 255))
             msg_rect = msg.get_rect(center=placeholder_rect.center)
             self.surface.blit(msg, msg_rect)
 
-        description_surface = self.small_font.render(profile.description, True, (220, 230, 250))
-        desc_rect = description_surface.get_rect(midbottom=(x + width // 2, y + height - 20))
-        self.surface.blit(description_surface, desc_rect)
+        # O texto de descrição foi removido para manter o preview mais limpo.
 
     def _draw_instructions(self) -> None:
-        text = "Arrows/WASD navigate • Enter/Space confirm • ESC back"
+        text = "Setas/WASD navegam • Enter/Espaço confirma • ESC retorna"
         surface = self.small_font.render(text, True, (200, 210, 230))
         rect = surface.get_rect(
             center=(self.config.screen_width // 2, self.config.screen_height - 40)
@@ -308,9 +308,9 @@ class StartMenu:
 
     def _value_text(self, key: str) -> str:
         if key == "music":
-            return "ON" if self.settings["music_enabled"] else "OFF"
+            return "LIGADO" if self.settings["music_enabled"] else "DESLIGADO"
         if key == "sfx":
-            return "ON" if self.settings["sfx_enabled"] else "OFF"
+            return "LIGADO" if self.settings["sfx_enabled"] else "DESLIGADO"
         if key == "bow":
             profile = get_bow_profile(str(self.settings.get("bow_type", "base")))
             return profile.label.upper()

@@ -2,6 +2,7 @@ import math
 import os
 from dataclasses import dataclass
 from enum import Enum, auto
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import pygame
@@ -9,6 +10,16 @@ from pygame.math import Vector3
 from dotenv import load_dotenv
 
 from menu import BowProfile, StartMenu, get_bow_profile, load_settings
+
+
+BASE_DIR = Path(__file__).resolve().parent
+MUSIC_FILE = (
+    BASE_DIR
+    / "2021 Remaster While My Guitar Gently Weeps with Prince, Tom Petty, Jeff Lynne and Steve Winwood.mp3"
+)
+SFX_FILE = (
+    BASE_DIR / "Arrow and Bow SOUND EFFECT - Pfeil und Bogen SOUNDS SFX-trimmed.wav"
+)
 
 
 # Representa os estados principais do loop, fica mais fácil enxergar a progressão.
@@ -172,7 +183,7 @@ class BowGame:
         self.screen = screen or pygame.display.set_mode(
             (config.screen_width, config.screen_height)
         )
-        pygame.display.set_caption("Semi-3D Bow & Arrow")
+        pygame.display.set_caption("Arco e Flecha Semi‑3D")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("consolas", 20)
         self.small_font = pygame.font.SysFont("consolas", 16)
@@ -181,6 +192,8 @@ class BowGame:
         self.sfx_enabled = True
         self.sfx_volume = 1.0
         self.audio_available = False
+        self.music_loaded = False
+        self.bow_sfx: Optional[pygame.mixer.Sound] = None
         self.bow_profile: BowProfile = get_bow_profile("base")
         self._init_audio()
         initial_settings = settings or load_settings()
@@ -214,12 +227,34 @@ class BowGame:
     def _init_audio(self) -> None:
         if pygame.mixer.get_init():
             self.audio_available = True
+            self._load_audio_assets()
             return
         try:
             pygame.mixer.init()
             self.audio_available = True
         except pygame.error:
             self.audio_available = False
+            return
+        self._load_audio_assets()
+
+    def _load_audio_assets(self) -> None:
+        if not self.audio_available:
+            return
+        self.music_loaded = False
+        if MUSIC_FILE.exists():
+            try:
+                pygame.mixer.music.load(str(MUSIC_FILE))
+                self.music_loaded = True
+            except pygame.error:
+                self.music_loaded = False
+        if SFX_FILE.exists():
+            try:
+                self.bow_sfx = pygame.mixer.Sound(str(SFX_FILE))
+                self.bow_sfx.set_volume(self.sfx_volume)
+            except pygame.error:
+                self.bow_sfx = None
+        else:
+            self.bow_sfx = None
 
     def _apply_settings(self, settings: Dict[str, Any]) -> None:
         merged = {
@@ -237,7 +272,20 @@ class BowGame:
     def _apply_audio_settings(self) -> None:
         if not self.audio_available or not pygame.mixer.get_init():
             return
-        pygame.mixer.music.set_volume(1.0 if self.music_enabled else 0.0)
+        if self.music_enabled and self.music_loaded:
+            pygame.mixer.music.set_volume(1.0)
+            if not pygame.mixer.music.get_busy():
+                pygame.mixer.music.play(-1)
+        else:
+            pygame.mixer.music.stop()
+        if self.bow_sfx:
+            self.bow_sfx.set_volume(self.sfx_volume)
+
+    def _play_bow_sfx(self) -> None:
+        if not self.audio_available or not self.sfx_enabled:
+            return
+        if self.bow_sfx:
+            self.bow_sfx.play()
 
     def run(self) -> None:
         # Loop principal tradicional do Pygame.
@@ -280,7 +328,7 @@ class BowGame:
             self.config,
             self.settings,
             surface=self.screen,
-            start_label="Resume Game",
+            start_label="Continuar Jogo",
         )
         result = menu.run()
         pygame.event.clear()
@@ -293,10 +341,10 @@ class BowGame:
     def _start_charging(self) -> None:
         # Impedimos disparos extras quando o jogador precisa recarregar.
         if self.awaiting_reload:
-            self._queue_warning("Press R to reload quiver.")
+            self._queue_warning("Pressione R para recarregar a aljava.")
             return
         if self.arrows_remaining <= 0:
-            self._queue_warning("Out of arrows. Press R to reload.")
+            self._queue_warning("Sem flechas. Pressione R para recarregar.")
             return
         if self.state in (GameState.AIMING, GameState.CHARGING) and not self.arrow:
             self.state = GameState.CHARGING
@@ -312,9 +360,8 @@ class BowGame:
             return
 
         shaped_power = power_ratio ** self.config.power_exponent
-        launch_speed = (
-            self.config.max_arrow_speed * shaped_power * self.bow_profile.fire_rate
-        )
+        effective_max = self._effective_max_speed()
+        launch_speed = effective_max * shaped_power
         yaw_rad = math.radians(self.yaw_deg)
         pitch_rad = math.radians(self.pitch_deg)
         cos_pitch = math.cos(pitch_rad)
@@ -324,7 +371,7 @@ class BowGame:
 
         if v_y <= 0.0:
             self.state = GameState.AIMING
-            self._queue_warning("Cannot shoot backward (adjust yaw/pitch).")
+            self._queue_warning("Não é possível atirar para trás (ajuste a mira).")
             return
 
         start_y = max(self.config.near_plane, 1e-4)
@@ -338,6 +385,7 @@ class BowGame:
         )
         self.state = GameState.IN_FLIGHT
         self.last_result = None
+        self._play_bow_sfx()
 
     def _queue_warning(self, text: str) -> None:
         # Avisos curtos ajudam o jogador sem abrir diálogos.
@@ -396,11 +444,11 @@ class BowGame:
         arrow.position += arrow.velocity * dt
 
         if arrow.flight_time >= self.config.arrow_timeout_seconds:
-            self._finalize_shot(hit=False, reason="Timeout")
+            self._finalize_shot(hit=False, reason="Tempo esgotado")
             return
 
         if arrow.position.y >= self.config.far_plane:
-            self._finalize_shot(hit=False, reason="Exceeded far plane")
+            self._finalize_shot(hit=False, reason="Passou do limite")
             return
 
         target_distance = self.config.target_distance()
@@ -428,7 +476,7 @@ class BowGame:
         # Reaproveitamos o lançamento inicial para resolver interseção com o plano do alvo.
         if not self.arrow:
             # Should not occur, but keep values sane.
-            return ShotResult(False, None, 0.0, (0.0, 0.0), 0.0, "No arrow", reason)
+            return ShotResult(False, None, 0.0, (0.0, 0.0), 0.0, "Sem flecha", reason)
 
         arrow = self.arrow
         distance = self.config.target_distance()
@@ -441,7 +489,7 @@ class BowGame:
                 0.0,
                 (0.0, 0.0),
                 arrow.flight_time,
-                reason or "Missed target plane",
+                reason or "Não atingiu o plano do alvo",
                 reason,
                 0,
             )
@@ -455,7 +503,7 @@ class BowGame:
         ring_index = self._ring_index(radial)
         points = self._points_for_ring(ring_index) if ring_index is not None else 0
         message = (
-            f"Ring {ring_index} hit!" if ring_index is not None else "Missed bullseye!"
+            f"Acertou anel {ring_index}!" if ring_index is not None else "Errou o alvo!"
         )
         return ShotResult(
             ring_index is not None,
@@ -485,8 +533,7 @@ class BowGame:
         step = (max_score - min_score) / (rings - 1)
         score = max_score - (ring_index - 1) * step
         raw_score = max(min_score, score)
-        scaled = raw_score * self.bow_profile.damage
-        return int(round(scaled))
+        return int(round(raw_score))
 
     def _update_quiver_after_shot(self, points: int) -> None:
         # Gerenciamos flechas, somamos pontos e forçamos o reload quando necessário.
@@ -495,14 +542,14 @@ class BowGame:
         self.quiver_score += points
         if self.arrows_remaining <= 0:
             self.awaiting_reload = True
-            self._queue_warning("Quiver empty. Press R to reload.")
+            self._queue_warning("Sem flechas. Pressione R para recarregar.")
 
     def _reload_quiver(self) -> None:
         # Reset da rodada: limpa marcadores, recarrega flechas e remove avisos.
         if not self.awaiting_reload and self.arrows_remaining == self.quiver_size:
             return
         if self.state == GameState.IN_FLIGHT:
-            self._queue_warning("Wait for arrow to finish before reloading.")
+            self._queue_warning("Espere a flecha terminar antes de recarregar.")
             return
         self.arrows_remaining = self.quiver_size
         self.quiver_score = 0
@@ -596,6 +643,13 @@ class BowGame:
             math.sin(pitch_rad),
         )
 
+    def _effective_max_speed(self) -> float:
+        return self.config.max_arrow_speed * self.bow_profile.strength
+
+    def _difficulty_label(self) -> str:
+        mapping = {"EASY": "Fácil", "MEDIUM": "Médio", "HARD": "Difícil"}
+        return mapping.get(self.config.difficulty, self.config.difficulty.title())
+
     def _project(self, point: Vector3) -> Optional[Tuple[int, int]]:
         # Projeção pinhole simples alinhada ao eixo Y.
         if point.y <= self.config.near_plane or point.y >= self.config.far_plane:
@@ -614,41 +668,40 @@ class BowGame:
     def _draw_ui(self) -> None:
         # HUD textual com foco em ângulos, potência e placar da aljava.
         ui_color = self.config.ui_color
+        music_state = "LIGADO" if self.music_enabled else "DESLIGADO"
+        sfx_state = "LIGADO" if self.sfx_enabled else "DESLIGADO"
+        difficulty_label = self._difficulty_label()
         lines = [
-            f"Yaw: {self.yaw_deg:+.1f} deg",
-            f"Pitch: {self.pitch_deg:+.1f} deg",
-            f"Difficulty: {self.config.difficulty} ({self.config.target_distance():.1f} m)",
-            "Audio: Music {music}  SFX {sfx}".format(
-                music="ON" if self.music_enabled else "OFF",
-                sfx="ON" if self.sfx_enabled else "OFF",
-            ),
-            "Bow: {name}  DMG x{dmg:.1f}  SPD x{spd:.2f}".format(
+            f"Guinada: {self.yaw_deg:+.1f}°",
+            f"Arfagem: {self.pitch_deg:+.1f}°",
+            f"Dificuldade: {difficulty_label} ({self.config.target_distance():.1f} m)",
+            f"Áudio: Música {music_state}  Efeitos {sfx_state}",
+            "Arco: {name}  Força x{strength:.2f}".format(
                 name=self.bow_profile.label,
-                dmg=self.bow_profile.damage,
-                spd=self.bow_profile.fire_rate,
+                strength=self.bow_profile.strength,
             ),
-            f"Quiver: {self.arrows_remaining}/{self.quiver_size}  Score: {self.quiver_score}",
+            f"Aljava: {self.arrows_remaining}/{self.quiver_size}  Pontuação: {self.quiver_score}",
         ]
 
         if self.state == GameState.CHARGING:
             power_ratio = min(self.draw_time / self.config.max_draw_seconds, 1.0)
             shaped = power_ratio ** self.config.power_exponent
-            speed = shaped * self.config.max_arrow_speed
-            lines.append(f"Power: {power_ratio*100:.0f}%  Speed: {speed:.1f} m/s")
+            speed = shaped * self._effective_max_speed()
+            lines.append(f"Potência: {power_ratio*100:.0f}%  Velocidade: {speed:.1f} m/s")
         else:
-            lines.append("Power: 0%  Speed: 0.0 m/s")
+            lines.append("Potência: 0%  Velocidade: 0.0 m/s")
 
         if self.last_result:
             status = (
-                f"Hit ring {self.last_result.ring_index}"
+                f"Acertou anel {self.last_result.ring_index}"
                 if self.last_result.hit and self.last_result.ring_index is not None
-                else f"Miss ({self.last_result.reason or 'No hit'})"
+                else f"Errou ({self.last_result.reason or 'Sem impacto'})"
             )
             lines.append(
-                f"Last shot: {status}  r={self.last_result.radial_distance:.2f} m  pts={self.last_result.points}"
+                f"Último tiro: {status}  r={self.last_result.radial_distance:.2f} m  pts={self.last_result.points}"
             )
         else:
-            lines.append("Last shot: —")
+            lines.append("Último tiro: —")
 
         for i, text in enumerate(lines):
             surface = self.font.render(text, True, ui_color)
@@ -681,14 +734,14 @@ class BowGame:
 
     def _draw_instructions(self) -> None:
         # Mantemos o tutorial sempre visível para facilitar testes rápidos.
-        extra = " | OUT OF ARROWS - PRESS R" if self.awaiting_reload else ""
+        extra = " | SEM FLECHAS - PRESSIONE R" if self.awaiting_reload else ""
         text = (
-            "A/D yaw  W/S pitch  SPACE hold+release to fire  1-3 difficulty  R reload  ESC menu"
+            "Utilize WASD para mirar  ESPAÇO segurar+soltar para disparar  1–3 dificuldade  R recarregar  ESC menu"
             + extra
         )
         surface = self.small_font.render(text, True, self.config.ui_color)
         rect = surface.get_rect(
-            center=(self.config.screen_width // 2, self.config.screen_height - 40)
+            center=(self.config.screen_width // 2, self.config.screen_height - 55)
         )
         self.screen.blit(surface, rect)
 
@@ -699,14 +752,14 @@ def main() -> None:
         pygame.init()
         pygame.font.init()
     screen = pygame.display.set_mode((config.screen_width, config.screen_height))
-    pygame.display.set_caption("Semi-3D Bow & Arrow - Menu")
+    pygame.display.set_caption("Arco e Flecha Semi‑3D - Menu")
     initial_settings = load_settings()
-    menu = StartMenu(config, initial_settings, surface=screen, start_label="Start Game")
+    menu = StartMenu(config, initial_settings, surface=screen, start_label="Iniciar Jogo")
     selected_settings = menu.run()
     if getattr(menu, "quit_requested", False) or selected_settings is None:
         pygame.quit()
         return
-    pygame.display.set_caption("Semi-3D Bow & Arrow")
+    pygame.display.set_caption("Arco e Flecha Semi‑3D")
     game = BowGame(config, selected_settings, screen=screen)
     try:
         game.run()

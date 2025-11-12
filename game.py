@@ -117,6 +117,11 @@ class GameConfig:
     quiver_size: int
     aim_circle_radius_px: int
     aim_circle_color: Tuple[int, int, int]
+    ground_color: Tuple[int, int, int]
+    ground_half_width: float
+    wood_wall_color: Tuple[int, int, int]
+    wood_wall_width: float
+    wood_wall_height: float
 
     @classmethod
     def load(cls) -> "GameConfig":
@@ -164,6 +169,11 @@ class GameConfig:
             quiver_size=_parse_int("QUIVER_SIZE"),
             aim_circle_radius_px=_parse_int("AIM_CIRCLE_RADIUS_PX"),
             aim_circle_color=_parse_color(_require_env("AIM_CIRCLE_COLOR")),
+            ground_color=_parse_color(_require_env("GROUND_COLOR")),
+            ground_half_width=_parse_float("GROUND_HALF_WIDTH_M"),
+            wood_wall_color=_parse_color(_require_env("WOOD_WALL_COLOR")),
+            wood_wall_width=_parse_float("WOOD_WALL_WIDTH_M"),
+            wood_wall_height=_parse_float("WOOD_WALL_HEIGHT_M"),
         )
 
     def target_distance(self) -> float:
@@ -560,12 +570,58 @@ class BowGame:
     def _render(self) -> None:
         # Desenhamos o mundo numa ordem fixa para manter a sensação semi-3D.
         self.screen.fill(self.config.bg_color)
+        self._draw_ground()
+        self._draw_wood_wall()
         self._draw_target()
         self._draw_aim_circle()
         if self.arrow:
             self._draw_arrow(self.arrow)
         self._draw_ui()
         pygame.display.flip()
+
+    def _draw_ground(self) -> None:
+        # Plano XY no chão para dar noção de perspectiva.
+        y_near = max(self.config.near_plane + 1e-3, 1e-3)
+        y_far = min(self.config.far_plane, self.config.target_distance())
+        if y_far <= y_near:
+            return
+        half_width = self.config.ground_half_width
+        world_points = [
+            Vector3(-half_width, y_near, 0.0),
+            Vector3(half_width, y_near, 0.0),
+            Vector3(half_width, y_far, 0.0),
+            Vector3(-half_width, y_far, 0.0),
+        ]
+        projected: List[Tuple[int, int]] = []
+        for point in world_points:
+            projected_point = self._project(point)
+            if not projected_point:
+                return
+            projected.append(projected_point)
+        pygame.draw.polygon(self.screen, self.config.ground_color, projected)
+
+    def _draw_wood_wall(self) -> None:
+        # Parede posicionada no mesmo plano do alvo para servir de cenário.
+        distance = self.config.target_distance()
+        if distance <= self.config.near_plane or distance >= self.config.far_plane:
+            return
+        half_width = self.config.wood_wall_width * 0.5
+        half_height = self.config.wood_wall_height * 0.5
+        cx = self.config.target_center_x
+        cz = self.config.target_center_z
+        world_points = [
+            Vector3(cx - half_width, distance, cz - half_height),
+            Vector3(cx + half_width, distance, cz - half_height),
+            Vector3(cx + half_width, distance, cz + half_height),
+            Vector3(cx - half_width, distance, cz + half_height),
+        ]
+        projected: List[Tuple[int, int]] = []
+        for point in world_points:
+            projected_point = self._project(point)
+            if not projected_point:
+                return
+            projected.append(projected_point)
+        pygame.draw.polygon(self.screen, self.config.wood_wall_color, projected)
 
     def _draw_target(self) -> None:
         # Desenhamos círculos com escala em perspectiva (1 / distância).

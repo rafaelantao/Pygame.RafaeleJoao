@@ -36,3 +36,7 @@ A interface exibe informações em tempo real, como:
 - Pontuação total
 - Número de flechas restantes
 - Detalhes do último tiro
+
+Link Youtube 
+
+https://youtube.com/shorts/QJ1w0aKWgyk?feature=share
